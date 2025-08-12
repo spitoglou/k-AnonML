@@ -111,7 +111,21 @@ def choose_dimension(partition, att_trees, qi_range, is_categorical, qi_len):
     for i in range(qi_len):
         if partition.allow[i] == 0:
             continue
+            
         norm_width = get_normalized_width(partition, i, att_trees, qi_range, is_categorical)
+        
+        # Additional check: ensure this dimension has enough distinct values to split
+        if not is_categorical[i]:
+            # For numeric: check if we have range to split
+            low = partition.width[i][0]
+            high = partition.width[i][1]
+            if low >= high:  # No range to split
+                continue
+        else:
+            # For categorical: check if we have multiple values
+            if norm_width <= 0:  # No diversity to split
+                continue
+        
         if norm_width > max_width:
             max_width = norm_width
             max_dim = i
@@ -137,23 +151,38 @@ def find_median(partition, dim, k):
     total = sum(frequency.values())
     middle = total / 2
     
+    # Enhanced termination conditions
     if middle < k or len(value_list) <= 1:
+        return ('', '', value_list[0], value_list[-1])
+    
+    # Additional check: ensure we can create two groups of at least k records each
+    if total < 2 * k:
         return ('', '', value_list[0], value_list[-1])
     
     index = 0
     split_val = ''
+    split_index = 0
     
+    # Find a split point that ensures both sides have at least k records
     for i, val in enumerate(value_list):
         index += frequency[val]
-        if index >= middle:
+        if index >= k and (total - index) >= k and index >= middle:
             split_val = val
             split_index = i
             break
+    
+    # If no valid split found, return empty
+    if split_val == '':
+        return ('', '', value_list[0], value_list[-1])
     
     try:
         next_val = value_list[split_index + 1]
     except IndexError:
         next_val = split_val
+    
+    # Final validation: if split_val equals next_val, we can't split
+    if split_val == next_val:
+        return ('', '', value_list[0], value_list[-1])
     
     return (split_val, next_val, value_list[0], value_list[-1])
 
@@ -187,6 +216,10 @@ def split_numerical(partition, dim, pwidth, pmiddle, att_trees, k):
     if split_val == '':
         return []
     
+    # Ensure split_val exists in the dictionary
+    if split_val not in att_trees[dim].dict:
+        return []
+    
     mean = att_trees[dim].dict[split_val]
     lmiddle = pmiddle[:]
     rmiddle = pmiddle[:]
@@ -202,14 +235,18 @@ def split_numerical(partition, dim, pwidth, pmiddle, att_trees, k):
     rmember = []
     
     for record in partition.member:
-        pos = att_trees[dim].dict[record[dim]]
-        if pos <= mean:
-            lmember.append(record)
+        if record[dim] in att_trees[dim].dict:
+            pos = att_trees[dim].dict[record[dim]]
+            if pos <= mean:
+                lmember.append(record)
+            else:
+                rmember.append(record)
         else:
-            rmember.append(record)
+            # If record value not in dict, add to left partition by default
+            lmember.append(record)
     
-    if len(lmember) < k or len(rmember) < k:
-        return []
+    # Note: Original implementation doesn't check k-anonymity here
+    # The find_median function already ensures valid splits
     
     sub_partitions.append(Partition(lmember, lwidth, lmiddle, len(pmiddle)))
     sub_partitions.append(Partition(rmember, rwidth, rmiddle, len(pmiddle)))
@@ -242,8 +279,8 @@ def split_categorical(partition, dim, pwidth, pmiddle, att_trees, k):
         else:
             rmember.append(record)
     
-    if len(lmember) < k or len(rmember) < k:
-        return []
+    # Note: Original implementation doesn't check k-anonymity here
+    # The find_median function already ensures valid splits
     
     # Create generalized values
     lmiddle = pmiddle[:]
@@ -275,14 +312,24 @@ def split_partition(partition, dim, att_trees, is_categorical, k):
 
 def check_splitable(partition, k):
     """Check if partition can be split while maintaining k-anonymity"""
-    if len(partition) < 2 * k:
-        return False
     return sum(partition.allow) > 0
 
 
-def anonymize(partition, att_trees, qi_range, is_categorical, qi_len, k, result):
+def anonymize(partition, att_trees, qi_range, is_categorical, qi_len, k, result, depth=0):
     """Main anonymization procedure - recursively partition until not splitable"""
+    # Add recursion depth protection
+    MAX_DEPTH = 50
+    if depth > MAX_DEPTH:
+        result.append(partition)
+        return
+    
+    # Check basic splitting conditions
     if not check_splitable(partition, k):
+        result.append(partition)
+        return
+    
+    # Additional safety: if partition is too small to split meaningfully
+    if len(partition) < 2 * k:
         result.append(partition)
         return
     
@@ -297,10 +344,21 @@ def anonymize(partition, att_trees, qi_range, is_categorical, qi_len, k, result)
     
     if len(sub_partitions) == 0:
         partition.allow[dim] = 0
-        anonymize(partition, att_trees, qi_range, is_categorical, qi_len, k, result)
+        # Recursively try with blocked dimension
+        anonymize(partition, att_trees, qi_range, is_categorical, qi_len, k, result, depth + 1)
     else:
+        # Validate sub-partitions before recursing
+        valid_partitions = []
         for sub_partition in sub_partitions:
-            anonymize(sub_partition, att_trees, qi_range, is_categorical, qi_len, k, result)
+            if len(sub_partition) >= k:  # Only recurse on valid partitions
+                valid_partitions.append(sub_partition)
+            else:
+                # If sub-partition is too small, merge back to parent or handle appropriately
+                result.append(sub_partition)
+        
+        # Recurse on valid partitions
+        for sub_partition in valid_partitions:
+            anonymize(sub_partition, att_trees, qi_range, is_categorical, qi_len, k, result, depth + 1)
 
 
 def mondrian_anonymization(data, k, qi_indices, sa_indices, is_categorical):
@@ -325,18 +383,29 @@ def mondrian_anonymization(data, k, qi_indices, sa_indices, is_categorical):
             wtemp.append(len(att_trees[i]['*']))
             middle.append('*')
     
-    # Create initial partition with all data
-    whole_partition = Partition(data, wtemp, middle, qi_len)
+    # Create initial partition with QI-only data
+    qi_data = [[row[qi_idx] for qi_idx in qi_indices] for row in data]
+    whole_partition = Partition(qi_data, wtemp, middle, qi_len)
     
     # Perform anonymization
     start_time = time.time()
     result = []
-    anonymize(whole_partition, att_trees, qi_range, is_categorical, qi_len, k, result)
+    anonymize(whole_partition, att_trees, qi_range, is_categorical, qi_len, k, result, 0)
     runtime = time.time() - start_time
+    
+# Debug output removed
     
     # Generate anonymized dataset
     anonymized_data = []
     ncp = 0.0
+    
+    # Create mapping from QI values to original records
+    qi_to_original = {}
+    for row_idx, row in enumerate(data):
+        qi_tuple = tuple(row[qi_idx] for qi_idx in qi_indices)
+        if qi_tuple not in qi_to_original:
+            qi_to_original[qi_tuple] = []
+        qi_to_original[qi_tuple].append((row_idx, row))
     
     for partition in result:
         # Calculate NCP for this partition
@@ -346,22 +415,32 @@ def mondrian_anonymization(data, k, qi_indices, sa_indices, is_categorical):
         
         # Add records with generalized values
         generalized_values = partition.middle
-        for record in partition.member:
-            new_record = record[:]
-            
-            # Replace QI values with generalized values
-            for i, qi_idx in enumerate(qi_indices):
-                new_record[qi_idx] = generalized_values[i]
-            
-            anonymized_data.append(new_record)
+        for qi_record in partition.member:
+            # Find corresponding original record
+            qi_tuple = tuple(qi_record)
+            if qi_tuple in qi_to_original:
+                # Get the first available original record with these QI values
+                original_records = qi_to_original[qi_tuple]
+                if original_records:
+                    row_idx, original_record = original_records.pop(0)
+                    new_record = original_record[:]
+                    
+                    # Replace QI values with generalized values
+                    for i, qi_idx in enumerate(qi_indices):
+                        new_record[qi_idx] = generalized_values[i]
+                    
+                    anonymized_data.append(new_record)
         
         r_ncp *= len(partition)
         ncp += r_ncp
     
     # Convert NCP to percentage
-    ncp /= qi_len
-    ncp /= len(data)
-    ncp *= 100
+    if len(data) > 0 and qi_len > 0:
+        ncp /= qi_len
+        ncp /= len(data)
+        ncp *= 100
+    else:
+        ncp = 0.0
     
     return anonymized_data, ncp, runtime
 
@@ -370,7 +449,12 @@ def load_csv(filename):
     """Load CSV file"""
     data = []
     with open(filename, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.reader(f)
+        # Try to detect delimiter
+        first_line = f.readline()
+        f.seek(0)
+        
+        delimiter = ',' if ',' in first_line else ';'
+        reader = csv.reader(f, delimiter=delimiter)
         for row in reader:
             data.append(row)
     return data

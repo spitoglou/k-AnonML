@@ -297,8 +297,9 @@ def tdg_anonymization(data, k, qi_indices, sa_indices, is_categorical):
             qi_range.append(len(att_trees[i]['*']))
             middle.append('*')
     
-    # Create initial partition with all data
-    whole_partition = Partition(data, middle)
+    # Create initial partition with QI-only data
+    qi_data = [[row[qi_idx] for qi_idx in qi_indices] for row in data]
+    whole_partition = Partition(qi_data, middle)
     
     # Perform anonymization
     start_time = time.time()
@@ -310,20 +311,35 @@ def tdg_anonymization(data, k, qi_indices, sa_indices, is_categorical):
     anonymized_data = []
     ncp = 0.0
     
+    # Create mapping from QI values to original records
+    qi_to_original = {}
+    for row_idx, row in enumerate(data):
+        qi_tuple = tuple(row[qi_idx] for qi_idx in qi_indices)
+        if qi_tuple not in qi_to_original:
+            qi_to_original[qi_tuple] = []
+        qi_to_original[qi_tuple].append((row_idx, row))
+    
     for partition in result_partitions:
         # Calculate NCP for this partition
         gen_result = partition.middle
         rncp = NCP(gen_result, att_trees, qi_range, is_categorical, qi_len)
         
         # Add records with generalized values
-        for record in partition.member:
-            new_record = record[:]
-            
-            # Replace QI values with generalized values
-            for i, qi_idx in enumerate(qi_indices):
-                new_record[qi_idx] = gen_result[i]
-            
-            anonymized_data.append(new_record)
+        for qi_record in partition.member:
+            # Find corresponding original record
+            qi_tuple = tuple(qi_record)
+            if qi_tuple in qi_to_original:
+                # Get the first available original record with these QI values
+                original_records = qi_to_original[qi_tuple]
+                if original_records:
+                    row_idx, original_record = original_records.pop(0)
+                    new_record = original_record[:]
+                    
+                    # Replace QI values with generalized values
+                    for i, qi_idx in enumerate(qi_indices):
+                        new_record[qi_idx] = gen_result[i]
+                    
+                    anonymized_data.append(new_record)
         
         rncp *= len(partition)
         ncp += rncp
@@ -340,7 +356,12 @@ def load_csv(filename):
     """Load CSV file"""
     data = []
     with open(filename, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.reader(f)
+        # Try to detect delimiter
+        first_line = f.readline()
+        f.seek(0)
+        
+        delimiter = ',' if ',' in first_line else ';'
+        reader = csv.reader(f, delimiter=delimiter)
         for row in reader:
             data.append(row)
     return data

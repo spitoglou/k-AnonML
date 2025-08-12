@@ -6,3 +6,4 @@ scikit-learn
 xgboost>=0.90
 notebook>=6.0.2
 numpy>=1.18.1
+rich>=14.0.0
