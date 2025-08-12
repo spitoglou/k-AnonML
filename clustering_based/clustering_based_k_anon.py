@@ -365,7 +365,7 @@ def adjust_cluster(cluster, residual, k):
     for i, t in enumerate(cluster.member):
         dist = r_distance(center, t)
         dist_dict[i] = dist
-    sorted_dict = sorted(dist_dict.iteritems(), key=operator.itemgetter(1))
+    sorted_dict = sorted(dist_dict.items(), key=operator.itemgetter(1))
     need_adjust_index = [t[0] for t in sorted_dict[k:]]
     need_adjust = [cluster.member[t] for t in need_adjust_index]
     residual.extend(need_adjust)

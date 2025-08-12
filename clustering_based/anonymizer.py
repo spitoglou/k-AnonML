@@ -26,11 +26,20 @@ def extend_result(val):
     return val
 
 
-def get_result_one(att_trees, data, k, path, qi_index, SA_index, type_alg):
+def get_result_one(att_trees, data, k, path, qi_index, SA_index, type_alg, logger=None):
     "run clustering_based_k_anon for one time, with k=10"
-    print("K=%d" % k)
+    if logger:
+        logger.info(f"[CLUSTERING] Starting k={k} with {type_alg}")
+    else:
+        print("K=%d" % k)
+    
     result, eval_result = clustering_based_k_anon(att_trees, reorder_columns(
         copy.deepcopy(data), qi_index), k, len(qi_index), SA_index, type_alg)
-    print("NCP %0.2f" % eval_result[0] + "%")
-    print("Running time %0.2f" % eval_result[1] + "seconds")
+    
+    if logger:
+        logger.info(f"[CLUSTERING] NCP: {eval_result[0]:.2f}%, Time: {eval_result[1]:.2f}s")
+    else:
+        print("NCP %0.2f" % eval_result[0] + "%")
+        print("Running time %0.2f" % eval_result[1] + "seconds")
+    
     return restore_column_order(result, qi_index)

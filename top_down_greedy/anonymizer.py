@@ -15,11 +15,20 @@ from utils.data import reorder_columns, restore_column_order
 DATA_SELECT = 'a'
 
 
-def tdg_get_result_one(att_trees, data, k, path, qi_index, SA_index):
+def tdg_get_result_one(att_trees, data, k, path, qi_index, SA_index, logger=None):
     "run Top_Down_Greedy_Anonymization for one time, with k=10"
-    print("K=%d" % k)
+    if logger:
+        logger.info(f"[TDG] Starting k={k}")
+    else:
+        print("K=%d" % k)
+    
     result, eval_result = Top_Down_Greedy_Anonymization(att_trees, reorder_columns(
         copy.deepcopy(data), qi_index), k, len(qi_index), SA_index)
-    print("NCP %0.2f" % eval_result[0] + "%")
-    print("Running time %0.2f" % eval_result[1] + "seconds")
+    
+    if logger:
+        logger.info(f"[TDG] NCP: {eval_result[0]:.2f}%, Time: {eval_result[1]:.2f}s")
+    else:
+        print("NCP %0.2f" % eval_result[0] + "%")
+        print("Running time %0.2f" % eval_result[1] + "seconds")
+    
     return restore_column_order(result, qi_index)

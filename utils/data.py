@@ -65,9 +65,7 @@ def restore_column_order(data, qi_index):
 def transform_columns(data):
     res = [[] for _ in range(len(data[0]))]
     for row in data:
-        print(row)
         for i, column in enumerate(row):
-            print(column)
             res[i].append(column)
     return res
 

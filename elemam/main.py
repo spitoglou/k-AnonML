@@ -75,7 +75,7 @@ def create_anon_data(best_nodes, raw_data, qi_index, gen_strat, kanon, res_folde
                     for col in qi_index:
                         anon_data[row][col] = "*"
 
-        print("Suppressed: " + str(suppressed_count) + " rows")
+        # print("Suppressed: " + str(suppressed_count) + " rows")
         writer = csv.writer(open(os.path.join(res_folder, "supprarray.csv"), "a+"))
         writer.writerow(str(suppressed_count))
         anon_data_list.update({tuple(node.attributes): anon_data})
@@ -129,7 +129,7 @@ def main(raw_data, kanon, gen_strat, max_gen_level, qi_index, metric, res_folder
                 best_nodes = [node]
         elif metric == "aecs":
             if node.eqclasses == eqcount:
-                print("Bad")
+                pass  # print("Bad")
             if node.eqclasses != 0 and node.eqclasses < eqcount:
                 eqcount = node.eqclasses
                 best_nodes = [node]
@@ -142,7 +142,7 @@ def main(raw_data, kanon, gen_strat, max_gen_level, qi_index, metric, res_folder
                 penalty = node.DMs_penalty
                 best_nodes = [node]
         elif metric == "ent":
-            print("Metric ENT")
+            # print("Metric ENT")
             new_loss = 0
             dictarray_r = []
             dictarray_g = []
@@ -174,7 +174,7 @@ def main(raw_data, kanon, gen_strat, max_gen_level, qi_index, metric, res_folder
                 best_nodes = [node]
 
     # Print best generalisation
-    print(best_nodes[0].attributes)
+    # print(best_nodes[0].attributes)
     with open(os.path.join(res_folder, 'genarray.csv'), 'a+') as gen_file:
         writer = csv.writer(gen_file)
         writer.writerow(best_nodes[0].attributes)

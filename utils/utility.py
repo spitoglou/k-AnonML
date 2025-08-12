@@ -64,7 +64,7 @@ def create_classifier(classifier, dataset):
         param['seed'] = 10
         clf = XGBClassifier(**param)
     else:
-        print('Invalid classifier!')
+        raise ValueError(f'Invalid classifier: {classifier}')
     return clf
 
 
