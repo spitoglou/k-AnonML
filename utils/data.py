@@ -81,3 +81,29 @@ def write_anon(path, anon_data, header, k, s, dataset, delimiter=';'):
             anon_writer.writerow(header)
             anon_writer.writerows(data)
     return len(anon_data)
+
+
+def read_data(file_path, delimiter=';'):
+    """Read CSV data from file"""
+    data = []
+    with open(file_path, 'r', newline='', encoding='utf-8') as f:
+        # Try to detect delimiter
+        first_line = f.readline()
+        f.seek(0)
+        
+        if delimiter == ';' and ',' in first_line and ';' not in first_line:
+            delimiter = ','
+        elif delimiter == ',' and ';' in first_line and ',' not in first_line:
+            delimiter = ';'
+        
+        reader = csv.reader(f, delimiter=delimiter)
+        for row in reader:
+            data.append(row)
+    return data
+
+
+def write_data(data, file_path, delimiter=';'):
+    """Write data to CSV file"""
+    with open(file_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f, delimiter=delimiter)
+        writer.writerows(data)

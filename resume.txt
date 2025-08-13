@@ -1,3 +1,0 @@
-For each of the algorithms create a script in the root. It must contain all necessary code to anonymize a dataset without calling or importing other python files of the project. Their main goal are to take as input a dataset and     
-   any other parameters needed by the respective algorithm and produce the anonymized dataset. Transfer code as needed.
-
